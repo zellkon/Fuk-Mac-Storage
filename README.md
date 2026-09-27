@@ -1,7 +1,5 @@
 # Fuk Mac Storage
 
-Created by **zellkon**.
-
 App macOS native bằng SwiftUI, chạy hoàn toàn local, không backend, không analytics và không thư viện bên thứ ba. Giao diện tiếng Anh mặc định, có thể đổi sang tiếng Việt trong Settings. Yêu cầu macOS 13 trở lên; bản build Universal hỗ trợ Apple Silicon và Intel.
 
 Docker chỉ xuất hiện trong sidebar sau khi Scan xác nhận Docker CLI và local daemon hoạt động. Ứng dụng không hiển thị cấu trúc `Library` trong giao diện; thay vào đó nhóm dữ liệu thành App caches, Build caches, Log files, Apps & data và các công cụ developer. Các mục app/developer và thư mục cá nhân lớn có thể dọn từng mục, nhưng yêu cầu gõ `MOVE TO TRASH`; cache/log chỉ cần xác nhận thông thường. Mục symbolic link hoặc quét chưa đầy đủ vẫn bị chặn.
@@ -81,9 +79,3 @@ Read commands timeout sau 60 giây, prune sau 10 phút. Nếu CLI timeout/đóng
 15 tests trên thư mục fixture tạm: allowlist, thư mục được bảo vệ, symlink ở mục/root/ancestor, đường dẫn root/nested bị chặn, inode thay đổi sau scan, missing folder, hard link, nested symlink, cancellation, Docker endpoint và phân tách volumes, output/timeout của tiến trình. Tests không prune Docker thật và không chuyển dữ liệu người dùng vào Thùng rác.
 
 Source: `Sources/SafeSpace` chứa SwiftUI và state; `Sources/SafeSpaceCore` chứa scanner, cleanup policy và Docker service. `Tests/SafeSpaceCoreTests` chứa tests.
-
-## Mời tác giả một ly cà phê ☕
-
-Nếu app giúp Mac của bạn bớt đầy, mời mình một ly cà phê để thanh năng lượng của tác giả bớt trống nhé. Mac chạy bằng điện, mình chạy bằng caffeine — hết cà phê là bug có cơ hội phản công! 😄
-
-☕ [Mua cho zellkon một ly cà phê](https://buymeacoffee.com/zellkon)

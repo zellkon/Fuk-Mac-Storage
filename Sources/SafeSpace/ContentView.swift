@@ -12,6 +12,7 @@ struct ContentView: View {
     @State private var pending: [DiskEntry] = []
     @State private var showCleanSheet = false
     @State private var showAccessGuide = false
+    @State private var showCoffee = false
     @State private var acknowledged = false
     @State private var reviewPhrase = ""
     @State private var pendingDocker: DockerAction?
@@ -65,7 +66,39 @@ struct ContentView: View {
                 Section(t("Storage categories", "Nhóm dung lượng")) { ForEach(DiskGroup.all) { sidebarRow($0) } }
                 if model.docker != nil { Section("Docker") { Label("Docker", systemImage: "shippingbox.fill").tag("docker") } }
             }.listStyle(.sidebar)
-            Label(t("Nothing is selected automatically", "Không tự chọn để xoá"), systemImage: "checkmark.shield").font(.caption).foregroundStyle(.secondary).padding(16)
+            Button { showCoffee.toggle() } label: {
+                Text("☕️").font(.system(size: 24))
+                    .frame(width: 44, height: 44)
+                    .background(Color.orange.opacity(0.12), in: Circle())
+                    .overlay(alignment: .bottomTrailing) {
+                        Text("✨").font(.system(size: 12)).allowsHitTesting(false)
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(t("Buy zellkon a coffee", "Mời zellkon một ly cà phê"))
+            .help(t("A little caffeine for the creator ☕", "Tiếp caffeine cho tác giả ☕"))
+            .popover(isPresented: $showCoffee, arrowEdge: .trailing) {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack {
+                        Text(t("Coffee break? ☕", "Nghỉ tay, cà phê nhé? ☕")).font(.headline)
+                        Spacer()
+                        Button { showCoffee = false } label: { Image(systemName: "xmark") }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(t("Close", "Đóng"))
+                    }
+                    Text(t("Your Mac runs on electricity, I run on caffeine — when the coffee runs out, the bugs fight back! 😄", "Mac chạy bằng điện, mình chạy bằng caffeine — hết cà phê là bug có cơ hội phản công! 😄"))
+                        .font(.callout).foregroundStyle(.secondary)
+                    Link(t("Buy zellkon a coffee ☕", "Mua cho zellkon một ly cà phê ☕"), destination: URL(string: "https://buymeacoffee.com/zellkon")!)
+                        .font(.callout.weight(.semibold))
+                }.padding(20).frame(width: 320)
+            }
+            .padding(.horizontal, 16)
+            VStack(alignment: .leading, spacing: 10) {
+                Label(t("Nothing is selected automatically", "Không tự chọn để xoá"), systemImage: "checkmark.shield")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("Created by zellkon")
+                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            }.padding(16)
         }.navigationSplitViewColumnWidth(min: 230, ideal: 270, max: 310)
     }
     private func sidebarRow(_ group: DiskGroup) -> some View {
