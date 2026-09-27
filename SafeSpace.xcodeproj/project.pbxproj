@@ -1,0 +1,51 @@
+// !$*UTF8*$!
+{ archiveVersion = 1; classes = {}; objectVersion = 56; objects = {
+F4ED7E5D336138D08B6D2C29 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/SafeSpace/AppModel.swift"; sourceTree = "<group>"; };
+0BA3211E9653549679058A7F = { isa = PBXBuildFile; fileRef = F4ED7E5D336138D08B6D2C29; };
+E44CC025E8E17BE374256CE9 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/SafeSpace/ContentView.swift"; sourceTree = "<group>"; };
+7A3F98CB1306F0DB663A8A13 = { isa = PBXBuildFile; fileRef = E44CC025E8E17BE374256CE9; };
+80E518B4E8CCB238DF64B00E = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/SafeSpace/SafeSpaceApp.swift"; sourceTree = "<group>"; };
+2F950BC9113E9552399B1E70 = { isa = PBXBuildFile; fileRef = 80E518B4E8CCB238DF64B00E; };
+5F75623ABFC0CC4E99BAA371 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/SafeSpaceCore/Disk.swift"; sourceTree = "<group>"; };
+ADF46A45E65E5CD28D6D8F04 = { isa = PBXBuildFile; fileRef = 5F75623ABFC0CC4E99BAA371; };
+21B6D20F74E6630A149FA5BD = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Sources/SafeSpaceCore/Docker.swift"; sourceTree = "<group>"; };
+1FC1A3B45D058ABB050EB020 = { isa = PBXBuildFile; fileRef = 21B6D20F74E6630A149FA5BD; };
+AA10CC7F0000000000000001 = { isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Resources/Assets.xcassets"; sourceTree = "<group>"; };
+AA10CC7F0000000000000002 = { isa = PBXBuildFile; fileRef = AA10CC7F0000000000000001; };
+38A007151ABE87CC01A5B6E9 = { isa = PBXFileReference; explicitFileType = wrapper.application; path = "Fuk Mac Storage.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+FBDC4F23F93125BBEEAE800C = { isa = PBXGroup; children = (38A007151ABE87CC01A5B6E9,); name = Products; sourceTree = "<group>"; };
+DC76E9F0C0006E8F919E0C51 = { isa = PBXGroup; children = (F4ED7E5D336138D08B6D2C29,E44CC025E8E17BE374256CE9,80E518B4E8CCB238DF64B00E,5F75623ABFC0CC4E99BAA371,21B6D20F74E6630A149FA5BD,AA10CC7F0000000000000001,FBDC4F23F93125BBEEAE800C,); sourceTree = "<group>"; };
+BCE16DD0260827ECF338C787 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (0BA3211E9653549679058A7F,7A3F98CB1306F0DB663A8A13,2F950BC9113E9552399B1E70,ADF46A45E65E5CD28D6D8F04,1FC1A3B45D058ABB050EB020,); runOnlyForDeploymentPostprocessing = 0; };
+7561BFB015D8F536760CB671 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+0189424A5A60FED329FA868E = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (AA10CC7F0000000000000002,); runOnlyForDeploymentPostprocessing = 0; };
+AB52CB08E0FDF02BF6C67C33 = { isa = XCBuildConfiguration; name = Debug; buildSettings = { CLANG_ENABLE_MODULES = YES; MACOSX_DEPLOYMENT_TARGET = 13.0; SDKROOT = macosx; SWIFT_VERSION = 5.0; }; };
+59E1BEE911F66DA37FEBACDC = { isa = XCBuildConfiguration; name = Debug; buildSettings = {
+        PRODUCT_NAME = "Fuk Mac Storage"; PRODUCT_BUNDLE_IDENTIFIER = local.fukmacstorage.app;
+        GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Fuk Mac Storage";
+        ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+        INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+        INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+        CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 1.0.0;
+        CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "-";
+        ENABLE_APP_SANDBOX = NO; ENABLE_HARDENED_RUNTIME = YES;
+        LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+        SWIFT_VERSION = 5.0; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; DEBUG_INFORMATION_FORMAT = dwarf;
+    }; };
+5283471FF90C511CFE244FFF = { isa = XCBuildConfiguration; name = Release; buildSettings = { CLANG_ENABLE_MODULES = YES; MACOSX_DEPLOYMENT_TARGET = 13.0; SDKROOT = macosx; SWIFT_VERSION = 5.0; }; };
+F4C425279CD5DDD18FD6DC6D = { isa = XCBuildConfiguration; name = Release; buildSettings = {
+        PRODUCT_NAME = "Fuk Mac Storage"; PRODUCT_BUNDLE_IDENTIFIER = local.fukmacstorage.app;
+        GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = "Fuk Mac Storage";
+        ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+        INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+        INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+        CURRENT_PROJECT_VERSION = 1; MARKETING_VERSION = 1.0.0;
+        CODE_SIGN_STYLE = Manual; CODE_SIGN_IDENTITY = "-";
+        ENABLE_APP_SANDBOX = NO; ENABLE_HARDENED_RUNTIME = YES;
+        LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+        SWIFT_VERSION = 5.0; SWIFT_OPTIMIZATION_LEVEL = "-O"; SWIFT_COMPILATION_MODE = wholemodule; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+    }; };
+F8C70E4123C9AE82C42562CC = { isa = XCConfigurationList; buildConfigurations = (AB52CB08E0FDF02BF6C67C33,5283471FF90C511CFE244FFF,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+651ECA092BE81738918D8CDB = { isa = XCConfigurationList; buildConfigurations = (59E1BEE911F66DA37FEBACDC,F4C425279CD5DDD18FD6DC6D,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+0E8A3AD980EC179856012B7E = { isa = PBXNativeTarget; buildConfigurationList = 651ECA092BE81738918D8CDB; buildPhases = (BCE16DD0260827ECF338C787,7561BFB015D8F536760CB671,0189424A5A60FED329FA868E,); buildRules = (); dependencies = (); name = SafeSpace; productName = SafeSpace; productReference = 38A007151ABE87CC01A5B6E9; productType = "com.apple.product-type.application"; };
+98F54143AB4E86B28C3AFEE0 = { isa = PBXProject; attributes = { LastUpgradeCheck = 2610; }; buildConfigurationList = F8C70E4123C9AE82C42562CC; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en,Base,vi,); mainGroup = DC76E9F0C0006E8F919E0C51; productRefGroup = FBDC4F23F93125BBEEAE800C; projectDirPath = ""; projectRoot = ""; targets = (0E8A3AD980EC179856012B7E,); };
+}; rootObject = 98F54143AB4E86B28C3AFEE0; }
