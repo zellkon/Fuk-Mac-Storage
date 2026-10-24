@@ -8,6 +8,7 @@ enum AppLanguage: String, CaseIterable, Identifiable { case english = "English",
 struct ContentView: View {
     @ObservedObject var model: AppModel
     @AppStorage("appLanguage") private var language = AppLanguage.english.rawValue
+    @AppStorage("deepScan") private var deepScan = false
     @State private var section: String? = "cache"
     @State private var pending: [DiskEntry] = []
     @State private var showCleanSheet = false
@@ -21,32 +22,41 @@ struct ContentView: View {
     @State private var filter = ""
     private var vi: Bool { language == AppLanguage.vietnamese.rawValue }
     private func t(_ en: String, _ vn: String) -> String { vi ? vn : en }
-    private var group: DiskGroup { DiskGroup.all.first { $0.id == section } ?? DiskGroup.all[0] }
+    private var groups: [DiskGroup] { DiskGroup.all + (deepScan || model.results[DiskGroup.wholeDisk.id] != nil ? [DiskGroup.wholeDisk] : []) }
+    private var group: DiskGroup { groups.first { $0.id == section } ?? DiskGroup.all[0] }
     private var currentResult: GroupResult? { model.openedResult ?? model.results[group.id] }
     private var entries: [DiskEntry] { (currentResult?.entries ?? []).filter { filter.isEmpty || $0.url.lastPathComponent.localizedCaseInsensitiveContains(filter) } }
 
     var body: some View {
         NavigationSplitView { sidebar } detail: {
             VStack(spacing: 0) {
-                summary.padding(24); Divider()
+                summary.padding(.horizontal, 24).padding(.top, 20).padding(.bottom, 18)
+                Divider()
                 if section == "docker" { dockerPanel } else { storagePanel }
-                Divider(); HStack(spacing: 10) {
+                Divider()
+                HStack(spacing: 10) {
                     if model.busy { ProgressView().controlSize(.small) }
-                    Text(model.status).font(.caption).foregroundStyle(.secondary).lineLimit(2); Spacer()
-                    if model.isScanning { Button(t("Stop scan", "Dừng quét")) { model.cancel() } }
-                    Button(t("Activity", "Nhật ký")) { model.showActivity = true }
-                }.padding(12)
+                    Text(model.status).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Spacer()
+                    Button { model.showActivity = true } label: { Label(t("Activity", "Nhật ký"), systemImage: "clock.arrow.circlepath") }.buttonStyle(.borderless).font(.caption)
+                }.padding(.horizontal, 16).padding(.vertical, 8)
             }.background(Color(nsColor: .windowBackgroundColor))
+            .navigationTitle(section == "docker" ? "Docker" : title(of: group))
         }
-        .tint(.blue).preferredColorScheme(.light)
+        .tint(.blue)
         .toolbar {
             ToolbarItemGroup {
-                Button { model.scan() } label: { Label(t("Scan", "Quét"), systemImage: "magnifyingglass") }.disabled(model.busy)
-                Button { section == "docker" ? model.refreshDocker() : model.scan() } label: { Label(t("Refresh", "Làm mới"), systemImage: "arrow.clockwise") }.disabled(model.busy)
-                Button { model.reveal(section == "docker" ? model.home.appendingPathComponent("Library/Containers/com.docker.docker") : model.home.appendingPathComponent(group.relativePath)) } label: { Label(t("Open in Finder", "Mở Finder"), systemImage: "folder") }
+                if model.isScanning {
+                    Button { model.cancel() } label: { Label(t("Stop scan", "Dừng quét"), systemImage: "stop.circle") }.help(t("Stop scan", "Dừng quét"))
+                } else {
+                    Button { section == "docker" ? model.refreshDocker() : model.scan() } label: { Label(model.lastScan == nil ? t("Scan", "Quét") : t("Rescan", "Quét lại"), systemImage: model.lastScan == nil ? "magnifyingglass" : "arrow.clockwise") }
+                        .help(t("Scan all storage categories", "Quét tất cả nhóm dung lượng")).disabled(model.busy).keyboardShortcut("r")
+                }
+                Button { model.reveal(section == "docker" ? model.home.appendingPathComponent("Library/Containers/com.docker.docker") : (model.openedFolder ?? group.root(home: model.home))) } label: { Label(t("Open in Finder", "Mở Finder"), systemImage: "folder") }.help(t("Open in Finder", "Mở Finder"))
                 Menu {
                     Picker(t("Display language", "Ngôn ngữ hiển thị"), selection: $language) { ForEach(AppLanguage.allCases) { Text($0.rawValue).tag($0.rawValue) } }
                     Divider()
+                    Toggle(t("Deep scan (whole disk, Desktop, Documents, Downloads)", "Quét sâu (toàn bộ ổ đĩa, Desktop, Documents, Downloads)"), isOn: $deepScan)
                     Button(t("Deep scan & access guide", "Hướng dẫn quét sâu và quyền truy cập")) { showAccessGuide = true }
                 } label: { Label(t("Settings", "Cài đặt"), systemImage: "gearshape") }
             }
@@ -55,7 +65,40 @@ struct ContentView: View {
         .sheet(isPresented: $showAccessGuide) { accessGuide }
         .sheet(item: $pendingDocker) { dockerConfirmation($0) }
         .sheet(isPresented: $model.showActivity) { activitySheet }
-        .onChange(of: section) { _ in model.closeFolder() }
+        .onChange(of: section) { _ in model.closeFolder(); filter = "" }
+        .onChange(of: deepScan) { on in if !on && section == DiskGroup.wholeDisk.id { section = "home" } }
+    }
+
+    // Category names live in SafeSpaceCore in English; translate them here for display.
+    private func title(of group: DiskGroup) -> String {
+        guard vi else { return group.title }
+        switch group.id {
+        case "cache": return "Bộ nhớ đệm app"
+        case "gradle": return "Bộ nhớ đệm build"
+        case "logs": return "File log"
+        case "developer": return "Công cụ dev & simulator"
+        case "android": return "Công cụ Android & emulator"
+        case "arduino": return "Công cụ Arduino"
+        case "support": return "Ứng dụng & dữ liệu"
+        case "home": return "Thư mục cá nhân lớn"
+        case "disk": return "Toàn bộ ổ đĩa"
+        default: return group.title
+        }
+    }
+    private func note(of group: DiskGroup) -> String {
+        guard vi else { return group.note }
+        switch group.id {
+        case "cache": return "Dữ liệu tạm của app. Hãy đóng app liên quan trước."
+        case "gradle": return "Thư viện có thể được tải lại ở lần build tiếp theo."
+        case "logs": return "Giữ lại log bạn cần để gỡ lỗi."
+        case "developer": return "Dữ liệu Xcode và simulator. Xem kỹ từng mục."
+        case "android": return "Dữ liệu SDK và emulator. Xem kỹ từng mục."
+        case "arduino": return "Gói board và công cụ. Xem kỹ từng mục."
+        case "support": return "Dữ liệu app có thể gồm database, file tải về và nội dung tài khoản."
+        case "home": return "Các thư mục lớn trong thư mục người dùng, trừ thư mục hệ thống ẩn."
+        case "disk": return "Mọi thứ trên ổ khởi động. Chỉ xem: mở từng thư mục để tìm phần chiếm nhiều dung lượng."
+        default: return group.note
+        }
     }
 
     private var sidebar: some View {
@@ -64,35 +107,10 @@ struct ContentView: View {
             Text(t("STORAGE, UNDER CONTROL", "QUẢN LÝ DUNG LƯỢNG")).font(.caption.weight(.semibold)).foregroundStyle(.secondary).padding(.horizontal, 16)
             List(selection: $section) {
                 Section(t("Storage categories", "Nhóm dung lượng")) { ForEach(DiskGroup.all) { sidebarRow($0) } }
+                if groups.contains(where: { $0.id == DiskGroup.wholeDisk.id }) { Section(t("Deep scan", "Quét sâu")) { sidebarRow(DiskGroup.wholeDisk) } }
                 if model.docker != nil { Section("Docker") { Label("Docker", systemImage: "shippingbox.fill").tag("docker") } }
             }.listStyle(.sidebar)
-            Button { showCoffee.toggle() } label: {
-                Text("☕️").font(.system(size: 24))
-                    .frame(width: 44, height: 44)
-                    .background(Color.orange.opacity(0.12), in: Circle())
-                    .overlay(alignment: .bottomTrailing) {
-                        Text("✨").font(.system(size: 12)).allowsHitTesting(false)
-                    }
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(t("Buy zellkon a coffee", "Mời zellkon một ly cà phê"))
-            .help(t("A little caffeine for the creator ☕", "Tiếp caffeine cho tác giả ☕"))
-            .popover(isPresented: $showCoffee, arrowEdge: .trailing) {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack {
-                        Text(t("Coffee break? ☕", "Nghỉ tay, cà phê nhé? ☕")).font(.headline)
-                        Spacer()
-                        Button { showCoffee = false } label: { Image(systemName: "xmark") }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(t("Close", "Đóng"))
-                    }
-                    Text(t("Your Mac runs on electricity, I run on caffeine — when the coffee runs out, the bugs fight back! 😄", "Mac chạy bằng điện, mình chạy bằng caffeine — hết cà phê là bug có cơ hội phản công! 😄"))
-                        .font(.callout).foregroundStyle(.secondary)
-                    Link(t("Buy zellkon a coffee ☕", "Mua cho zellkon một ly cà phê ☕"), destination: URL(string: "https://buymeacoffee.com/zellkon")!)
-                        .font(.callout.weight(.semibold))
-                }.padding(20).frame(width: 320)
-            }
-            .padding(.horizontal, 16)
+            if !AppModel.isSandboxed { coffeeButton }
             VStack(alignment: .leading, spacing: 10) {
                 Label(t("Nothing is selected automatically", "Không tự chọn để xoá"), systemImage: "checkmark.shield")
                     .font(.caption).foregroundStyle(.secondary)
@@ -101,63 +119,171 @@ struct ContentView: View {
             }.padding(16)
         }.navigationSplitViewColumnWidth(min: 230, ideal: 270, max: 310)
     }
-    private func sidebarRow(_ group: DiskGroup) -> some View {
-        HStack { Label(group.title, systemImage: group.icon); Spacer(); if let result = model.results[group.id] { Text(formattedBytes(result.bytes)).font(.caption).foregroundStyle(.secondary) } }.tag(group.id)
+    // Tip link: App Store rule 3.1.1 requires In-App Purchase for tips, so the sandboxed
+    // (App Store) build hides it.
+    private var coffeeButton: some View {
+        Button { showCoffee.toggle() } label: {
+            Text("☕️").font(.system(size: 24))
+                .frame(width: 44, height: 44)
+                .background(Color.orange.opacity(0.12), in: Circle())
+                .overlay(alignment: .bottomTrailing) {
+                    Text("✨").font(.system(size: 12)).allowsHitTesting(false)
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(t("Buy zellkon a coffee", "Mời zellkon một ly cà phê"))
+        .help(t("A little caffeine for the creator ☕", "Tiếp caffeine cho tác giả ☕"))
+        .popover(isPresented: $showCoffee, arrowEdge: .trailing) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    Text(t("Coffee break? ☕", "Nghỉ tay, cà phê nhé? ☕")).font(.headline)
+                    Spacer()
+                    Button { showCoffee = false } label: { Image(systemName: "xmark") }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(t("Close", "Đóng"))
+                }
+                Text(t("Your Mac runs on electricity, I run on caffeine — when the coffee runs out, the bugs fight back! 😄", "Mac chạy bằng điện, mình chạy bằng caffeine — hết cà phê là bug có cơ hội phản công! 😄"))
+                    .font(.callout).foregroundStyle(.secondary)
+                Link(t("Buy zellkon a coffee ☕", "Mua cho zellkon một ly cà phê ☕"), destination: URL(string: "https://buymeacoffee.com/zellkon")!)
+                    .font(.callout.weight(.semibold))
+            }.padding(20).frame(width: 320)
+        }
+        .padding(.horizontal, 16)
     }
+    private func sidebarRow(_ group: DiskGroup) -> some View {
+        HStack {
+            Label(title(of: group), systemImage: group.icon).lineLimit(1)
+            Spacer()
+            if let result = model.results[group.id] { Text(formattedBytes(result.bytes)).font(.caption).monospacedDigit().foregroundStyle(.secondary) }
+            else if model.isScanning { ProgressView().controlSize(.mini) }
+        }.tag(group.id)
+    }
+    private var hasScanned: Bool { !model.results.isEmpty }
     private var summary: some View {
-        HStack(spacing: 22) {
-            metric(t("Available storage", "Dung lượng trống"), formattedBytes(model.freeBytes), t("Reported by macOS", "macOS báo cáo"), "internaldrive")
-            Divider().frame(height: 56)
-            metric(t("Scanned storage", "Đã quét"), formattedBytes(model.cacheBytes), t("Selected categories", "Các nhóm có thể chọn"), "externaldrive")
-            Divider().frame(height: 56)
-            metric(t("Ready to clean", "Sẵn sàng dọn"), formattedBytes(model.selectedBytes), t("Moves to Trash first", "Chuyển vào Thùng rác trước"), "trash")
+        HStack(spacing: 14) {
+            MetricCard(icon: "internaldrive", title: t("Available storage", "Dung lượng trống"), value: model.freeBytes > 0 ? formattedBytes(model.freeBytes) : "—", tint: model.usedFraction > 0.9 ? .red : .primary) {
+                if model.totalBytes > 0 {
+                    VStack(alignment: .leading, spacing: 5) {
+                        ProgressView(value: model.usedFraction).tint(model.usedFraction > 0.9 ? .red : (model.usedFraction > 0.75 ? .orange : .blue))
+                        Text(t("\(formattedBytes(model.totalBytes - model.freeBytes)) used of \(formattedBytes(model.totalBytes))", "Đã dùng \(formattedBytes(model.totalBytes - model.freeBytes)) / \(formattedBytes(model.totalBytes))")).font(.caption2).foregroundStyle(.secondary).monospacedDigit()
+                    }
+                }
+            }
+            MetricCard(icon: "magnifyingglass", title: t("Found in scan", "Tìm thấy khi quét"), value: hasScanned ? formattedBytes(model.cacheBytes) : "—", tint: .primary) {
+                Text(hasScanned ? t("\(model.results.count) of \(groups.count) categories scanned", "Đã quét \(model.results.count)/\(groups.count) nhóm") : t("Run a scan to measure", "Quét để đo dung lượng")).font(.caption2).foregroundStyle(.secondary)
+            }
+            MetricCard(icon: "trash", title: t("Ready to clean", "Sẵn sàng dọn"), value: model.selected.isEmpty ? "—" : formattedBytes(model.selectedBytes), tint: model.selected.isEmpty ? .primary : .blue) {
+                Text(model.selected.isEmpty ? t("Nothing selected yet", "Chưa chọn mục nào") : t("\(model.chosen.count) items • moves to Trash first", "\(model.chosen.count) mục • chuyển vào Thùng rác trước")).font(.caption2).foregroundStyle(.secondary)
+            }
         }
     }
-    private func metric(_ title: String, _ value: String, _ detail: String, _ icon: String) -> some View {
-        VStack(alignment: .leading, spacing: 5) { Label(title, systemImage: icon).font(.caption).foregroundStyle(.secondary); Text(value).font(.system(size: 27, weight: .semibold, design: .rounded)).foregroundStyle(.primary).monospacedDigit(); Text(detail).font(.caption2).foregroundStyle(.secondary) }.frame(maxWidth: .infinity, alignment: .leading)
-    }
     private var storagePanel: some View {
-        VStack(alignment: .leading, spacing: 15) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    if let folder = model.openedFolder {
-                        Button { model.closeFolder() } label: { Label(t("Back to category", "Quay lại nhóm"), systemImage: "chevron.left") }.buttonStyle(.borderless)
-                        Text(folder.lastPathComponent).font(.title.bold()).foregroundStyle(.primary)
-                    } else { Text(group.title).font(.title.bold()).foregroundStyle(.primary) }
-                    Text(model.openedFolder == nil ? group.note : t("Select a folder to scan one level deeper.", "Chọn thư mục để quét sâu thêm một cấp.")).font(.callout).foregroundStyle(.secondary)
-                }
-                Spacer(); Label(t("Review before cleaning", "Xem trước khi dọn"), systemImage: "checkmark.shield").font(.caption.weight(.medium)).padding(8).background(Color.blue.opacity(0.10), in: Capsule()).foregroundStyle(.blue)
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                if let folder = model.openedFolder {
+                    HStack(spacing: 6) {
+                        Button { model.closeFolder() } label: { Label(title(of: group), systemImage: "chevron.left") }.buttonStyle(.borderless)
+                        Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                        Text(folder.lastPathComponent).foregroundStyle(.secondary).lineLimit(1)
+                    }.font(.callout)
+                    Text(folder.lastPathComponent).font(.title2.bold()).lineLimit(1)
+                } else { Text(title(of: group)).font(.title2.bold()) }
+                Text(model.openedFolder == nil ? note(of: group) : t("Select a folder to scan one level deeper.", "Chọn thư mục để quét sâu thêm một cấp.")).font(.callout).foregroundStyle(.secondary)
+            }
+            if group.id == "home" && !deepScan && model.openedFolder == nil {
+                notice(icon: "lock.shield", text: t("Desktop, Documents and Downloads are skipped so macOS does not ask for access. Turn on Deep scan to include them.", "Desktop, Documents và Downloads đang được bỏ qua để macOS không hỏi quyền. Bật Quét sâu để quét cả các thư mục này."), button: t("Turn on Deep scan", "Bật Quét sâu")) { deepScan = true }
+            }
+            if group.id == DiskGroup.wholeDisk.id && !model.diskAccess {
+                notice(icon: "lock.shield", text: t("To measure the whole disk, allow access to your startup disk once. The App Store version can only read what you select.", "Để đo toàn bộ ổ đĩa, hãy cho phép truy cập ổ khởi động một lần. Bản App Store chỉ đọc được những gì bạn chọn."), button: t("Allow disk access…", "Cho phép truy cập ổ…")) { if model.requestAccess(disk: true) { model.scan() } }
+            }
+            if group.id == DiskGroup.wholeDisk.id {
+                notice(icon: "eye", text: t("Read-only overview. Open folders to find what is large, then clean it from its category or in Finder. For complete sizes, grant Full Disk Access once (see Settings → Deep scan & access guide).", "Chỉ để xem. Mở từng thư mục để tìm phần chiếm nhiều dung lượng, rồi dọn ở nhóm tương ứng hoặc trong Finder. Để đo đủ, hãy cấp Full Disk Access một lần (xem Cài đặt → Hướng dẫn quét sâu)."), button: nil, action: nil)
             }
             if let result = currentResult {
-                if !result.issues.isEmpty { Label(t("Some items could not be fully scanned. Their size is partial; cleaning needs an extra confirmation.", "Một số mục chưa quét đủ. Dung lượng là một phần; dọn cần xác nhận thêm."), systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.orange) }
-                HStack { TextField(t("Search items…", "Tìm mục…"), text: $filter).textFieldStyle(.roundedBorder).frame(maxWidth: 330); Spacer(); Text("\(entries.count) " + t("items", "mục")).font(.caption).foregroundStyle(.secondary) }
-                ScrollView { LazyVStack(spacing: 0) { ForEach(entries) { entry in entryRow(entry); Divider() } } }
-            } else { Spacer(); VStack(spacing: 12) { Image(systemName: "internaldrive.badge.magnifyingglass").font(.system(size: 46)).foregroundStyle(.blue); Text(model.busy ? t("Scanning…", "Đang quét…") : t("Scan your Mac to begin", "Quét máy Mac để bắt đầu")).font(.title3.weight(.semibold)); Text(t("We only read storage information until you choose an item.", "App chỉ đọc dung lượng cho đến khi bạn chọn mục.")).foregroundStyle(.secondary); if !model.busy { Button(t("Scan storage", "Quét dung lượng")) { model.scan() }.buttonStyle(.borderedProminent) } }.frame(maxWidth: .infinity); Spacer() }
-            HStack {
-                Button(t("Select all scanned", "Chọn tất cả đã quét")) { entries.filter(\.eligible).forEach { model.selected.insert($0.id) } }.disabled(entries.filter(\.eligible).isEmpty || model.busy)
+                if !result.issues.isEmpty {
+                    Label(t("Some items could not be fully scanned. Their size is partial; cleaning needs an extra confirmation.", "Một số mục chưa quét đủ. Dung lượng là một phần; dọn cần xác nhận thêm."), systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption).foregroundStyle(.orange).padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+                }
+                HStack {
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                        TextField(t("Search items…", "Tìm mục…"), text: $filter).textFieldStyle(.plain)
+                        if !filter.isEmpty { Button { filter = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }.buttonStyle(.plain) }
+                    }.padding(.horizontal, 8).padding(.vertical, 6).frame(maxWidth: 320)
+                    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 7))
+                    .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.primary.opacity(0.08)))
+                    Spacer()
+                    Text("\(entries.count) " + t("items", "mục") + " • " + formattedBytes(entries.reduce(0) { $0 + $1.bytes })).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                }
+                if entries.isEmpty {
+                    emptyState(icon: filter.isEmpty ? "checkmark.seal" : "magnifyingglass", title: filter.isEmpty ? t("Nothing to clean here", "Không có gì để dọn") : t("No matching items", "Không có mục phù hợp"), detail: filter.isEmpty ? t("This category is empty or could not be read.", "Nhóm này trống hoặc không đọc được.") : t("Try a different search.", "Thử từ khoá khác."))
+                } else {
+                    let largest = max(entries.map(\.bytes).max() ?? 1, 1)
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(entries) { entry in
+                                EntryRow(entry: entry, fraction: Double(entry.bytes) / Double(largest), selected: model.selected.contains(entry.id), opening: model.openingFolder == entry.url, disabled: model.busy, t: t,
+                                         toggle: { if model.selected.contains(entry.id) { model.selected.remove(entry.id) } else { model.selected.insert(entry.id) } },
+                                         open: { model.openFolder(entry, group: group) }, reveal: { model.reveal(entry.url) })
+                                if entry.id != entries.last?.id { Divider().padding(.leading, 44) }
+                            }
+                        }.padding(.vertical, 4)
+                    }
+                    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.08)))
+                    .overlay { if let folder = model.openingFolder { openingOverlay(folder) } }
+                }
+            } else if !model.homeAccess {
+                emptyState(icon: "folder.badge.person.crop", title: t("Allow access to your home folder", "Cho phép truy cập thư mục cá nhân"), detail: t("Fuk Mac Storage runs in the App Sandbox and can only measure folders you choose. Select your home folder “\(model.home.lastPathComponent)” once; access is remembered.", "Fuk Mac Storage chạy trong App Sandbox và chỉ đo được thư mục bạn chọn. Hãy chọn thư mục cá nhân “\(model.home.lastPathComponent)” một lần; quyền sẽ được ghi nhớ."), action: (t("Choose Home Folder…", "Chọn thư mục cá nhân…"), { if model.requestAccess() { model.scan() } }))
+            } else if model.isScanning {
+                emptyState(icon: "hourglass", title: t("Scanning…", "Đang quét…"), detail: t("Categories appear in the sidebar as soon as they are measured.", "Mỗi nhóm hiện ở thanh bên ngay khi đo xong."), spinner: true)
+            } else {
+                emptyState(icon: "internaldrive.badge.magnifyingglass", title: t("Scan your Mac to begin", "Quét máy Mac để bắt đầu"), detail: t("We only read storage information until you choose an item.", "App chỉ đọc dung lượng cho đến khi bạn chọn mục."), action: model.busy ? nil : (t("Scan storage", "Quét dung lượng"), { model.scan() }))
+            }
+            HStack(spacing: 10) {
+                Button(t("Select all", "Chọn tất cả")) { entries.filter(\.eligible).forEach { model.selected.insert($0.id) } }.disabled(entries.filter(\.eligible).isEmpty || model.busy)
                 Button(t("Clear selection", "Bỏ chọn")) { model.selected.removeAll() }.disabled(model.selected.isEmpty || model.busy)
+                Image(systemName: "info.circle").foregroundStyle(.secondary)
+                    .help(t("Size is an estimate. APFS snapshots, clones and hard links can make the actual recovered space different.", "Dung lượng là ước tính; APFS snapshots, clones và hard links có thể làm dung lượng thực khác."))
                 Spacer()
-                Text("\(model.chosen.count) " + t("items", "mục") + " • " + formattedBytes(model.selectedBytes)).font(.callout)
-                Button(t("Clean selected…", "Dọn mục đã chọn…")) { pending = model.chosen.sorted { $0.url.path < $1.url.path }; acknowledged = false; reviewPhrase = ""; showCleanSheet = true }.buttonStyle(.borderedProminent).disabled(model.selected.isEmpty || model.busy)
+                if !model.selected.isEmpty { Text("\(model.chosen.count) " + t("items", "mục") + " • " + formattedBytes(model.selectedBytes)).font(.callout.weight(.medium)).monospacedDigit() }
+                Button { pending = model.chosen.sorted { $0.url.path < $1.url.path }; acknowledged = false; reviewPhrase = ""; showCleanSheet = true } label: { Label(t("Clean selected…", "Dọn mục đã chọn…"), systemImage: "trash") }
+                    .buttonStyle(.borderedProminent).controlSize(.large).disabled(model.selected.isEmpty || model.busy)
             }
-            Text(t("Size is an estimate. APFS snapshots, clones and hard links can make the actual recovered space different.", "Dung lượng là ước tính; APFS snapshots, clones và hard links có thể làm dung lượng thực khác.")).font(.caption2).foregroundStyle(.secondary)
-        }.padding(24)
+        }.padding(.horizontal, 24).padding(.vertical, 18)
     }
-    private func entryRow(_ entry: DiskEntry) -> some View {
-        HStack(spacing: 12) {
-            if entry.eligible { Toggle("", isOn: Binding(get: { model.selected.contains(entry.id) }, set: { value in
-                if value { model.selected.insert(entry.id) } else { model.selected.remove(entry.id) }
-            })).labelsHidden().toggleStyle(.checkbox).disabled(model.busy) } else { Image(systemName: "lock.fill").font(.caption).foregroundStyle(.secondary).frame(width: 16) }
-            VStack(alignment: .leading, spacing: 3) {
-                if entry.isDirectory { Button(entry.url.lastPathComponent) { model.openFolder(entry, group: group) }.buttonStyle(.plain).font(.body.weight(.medium)).foregroundStyle(.primary).lineLimit(1) }
-                else { Text(entry.url.lastPathComponent).font(.body.weight(.medium)).foregroundStyle(.primary).lineLimit(1) }
-                if entry.isDirectory { Text(t("Click name to open", "Bấm tên để mở")).font(.caption2).foregroundStyle(.blue) }
-                if entry.needsExtraConfirmation { Text(t("Needs an extra confirmation", "Cần xác nhận thêm")).font(.caption2).foregroundStyle(.orange) }; if entry.isLink { Text(t("Symbolic link — not followed", "Symbolic link — không đi theo")).font(.caption2).foregroundStyle(.secondary) }; if entry.issueCount > 0 { Text(t("Partial scan — still available with review", "Quét một phần — vẫn có thể dọn sau khi xác nhận")).font(.caption2).foregroundStyle(.orange) }
+    private func openingOverlay(_ folder: URL) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .windowBackgroundColor).opacity(0.6))
+            VStack(spacing: 12) {
+                ProgressView().controlSize(.large)
+                Text(t("Opening “\(folder.lastPathComponent)”…", "Đang mở “\(folder.lastPathComponent)”…")).font(.title3.weight(.semibold)).lineLimit(1).truncationMode(.middle)
+                Text(t("Measuring every item inside. Large folders can take a while.", "Đang đo từng mục bên trong. Thư mục lớn có thể mất một lúc.")).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                Button(t("Cancel", "Huỷ")) { model.cancel() }.controlSize(.large).keyboardShortcut(.cancelAction)
             }
-            Spacer(); Text(formattedBytes(entry.bytes)).monospacedDigit().foregroundStyle(.secondary)
-            if entry.isDirectory { Button { model.openFolder(entry, group: group) } label: { Image(systemName: "chevron.right") }.help(t("Open folder", "Mở thư mục")).buttonStyle(.borderless) }
-            Button { model.reveal(entry.url) } label: { Image(systemName: "folder") }.help(t("Open in Finder", "Mở Finder")).buttonStyle(.borderless)
-        }.padding(.vertical, 11).padding(.horizontal, 4)
+            .padding(28).frame(maxWidth: 420)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+            .shadow(color: .black.opacity(0.18), radius: 18, y: 6)
+        }
+        .transition(.opacity)
+    }
+    private func notice(icon: String, text: String, button: String?, action: (() -> Void)?) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon).foregroundStyle(.blue)
+            Text(text).font(.caption).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+            if let button, let action { Button(button, action: action).controlSize(.small).fixedSize() }
+        }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+    }
+    private func emptyState(icon: String, title: String, detail: String, spinner: Bool = false, action: (String, () -> Void)? = nil) -> some View {
+        VStack(spacing: 10) {
+            if spinner { ProgressView().controlSize(.large).padding(.bottom, 4) }
+            else { Image(systemName: icon).font(.system(size: 40, weight: .light)).foregroundStyle(.blue) }
+            Text(title).font(.title3.weight(.semibold))
+            Text(detail).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            if let action { Button(action.0, action: action.1).buttonStyle(.borderedProminent).controlSize(.large).padding(.top, 6) }
+        }.frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     private var cleanConfirmation: some View {
         let requiresReview = pending.contains(where: \.needsExtraConfirmation)
@@ -203,6 +329,9 @@ struct ContentView: View {
             Label(t("Deep scan & access", "Quét sâu và quyền truy cập"), systemImage: "lock.shield").font(.title2.bold()).foregroundStyle(.blue)
             Text(t("Fuk Mac Storage scans inside each selected storage category. If macOS protects some files, the app reports a partial size and requires an extra confirmation before moving the parent item to Trash.", "Fuk Mac Storage quét bên trong từng nhóm dữ liệu. Nếu macOS bảo vệ một số file, app ghi dung lượng một phần và yêu cầu xác nhận thêm trước khi chuyển mục cha vào Thùng rác."))
             Divider()
+            Text(t("Deep scan", "Quét sâu")).font(.headline)
+            Text(t("Off by default: Desktop, Documents and Downloads are skipped, so macOS does not ask for access. Turn it on in Settings to scan them and to add a read-only Entire disk overview. Signed builds keep the permissions you grant, so macOS asks only once.", "Mặc định tắt: Desktop, Documents và Downloads được bỏ qua nên macOS không hỏi quyền. Bật trong Cài đặt để quét các thư mục này và thêm nhóm Toàn bộ ổ đĩa (chỉ xem). Bản build đã ký giữ lại quyền bạn cấp, nên macOS chỉ hỏi một lần."))
+            Divider()
             Text(t("How to clean all app cache", "Cách dọn toàn bộ app cache")).font(.headline)
             Text(t("Scan → App caches → Select all scanned → Clean selected. This moves the contents of your Caches folder to Trash; it does not delete the Caches folder itself.", "Quét → App caches → Chọn tất cả đã quét → Dọn mục đã chọn. App chuyển nội dung của Caches vào Thùng rác, không xoá thư mục Caches."))
             Divider()
@@ -212,5 +341,101 @@ struct ContentView: View {
                 .foregroundStyle(.orange)
             HStack { Spacer(); Button(t("Close", "Đóng")) { showAccessGuide = false }.keyboardShortcut(.cancelAction) }
         }.padding(26).frame(width: 690)
+    }
+}
+
+private struct MetricCard<Footer: View>: View {
+    let icon: String
+    let title: String
+    let value: String
+    let tint: Color
+    @ViewBuilder let footer: () -> Footer
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(title, systemImage: icon).font(.caption.weight(.medium)).foregroundStyle(.secondary)
+            Text(value).font(.system(size: 26, weight: .semibold, design: .rounded)).monospacedDigit().foregroundStyle(tint).lineLimit(1).minimumScaleFactor(0.7)
+            footer()
+        }
+        .padding(14).frame(maxWidth: .infinity, minHeight: 112, maxHeight: 112, alignment: .topLeading)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.08)))
+    }
+}
+
+private struct EntryRow: View {
+    let entry: DiskEntry
+    let fraction: Double
+    let selected: Bool
+    let opening: Bool
+    let disabled: Bool
+    let t: (String, String) -> String
+    let toggle: () -> Void
+    let open: () -> Void
+    let reveal: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Group {
+                if entry.eligible {
+                    Toggle("", isOn: Binding(get: { selected }, set: { _ in toggle() })).labelsHidden().toggleStyle(.checkbox).disabled(disabled)
+                } else {
+                    Image(systemName: "lock.fill").font(.caption).foregroundStyle(.secondary).help(t("Protected — cannot be cleaned", "Được bảo vệ — không thể dọn"))
+                }
+            }.frame(width: 20)
+            Image(systemName: entry.isLink ? "link" : (entry.isDirectory ? "folder.fill" : "doc.fill"))
+                .foregroundStyle(entry.isDirectory ? Color.blue.opacity(0.85) : .secondary).frame(width: 18)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(entry.url.lastPathComponent).font(.body.weight(.medium)).lineLimit(1).truncationMode(.middle)
+                let tags = badges
+                if !tags.isEmpty {
+                    HStack(spacing: 5) { ForEach(tags, id: \.0) { tag in Text(tag.0).font(.caption2.weight(.medium)).padding(.horizontal, 6).padding(.vertical, 1.5).foregroundStyle(tag.1).background(tag.1.opacity(0.12), in: Capsule()) } }
+                }
+            }
+            Spacer(minLength: 12)
+            ProgressView(value: min(max(fraction, 0.02), 1)).tint(selected ? .blue : .secondary).frame(width: 90)
+            Text(formattedBytes(entry.bytes)).font(.callout.weight(.medium)).monospacedDigit().frame(width: 76, alignment: .trailing)
+            HStack(spacing: 4) {
+                RowIconButton(systemImage: "folder", help: t("Show in Finder", "Hiện trong Finder"), action: reveal)
+                if opening { ProgressView().controlSize(.small).frame(width: 32, height: 32) }
+                else if entry.isDirectory { RowIconButton(systemImage: "chevron.right", help: t("Open folder", "Mở thư mục"), prominent: true, action: open).disabled(disabled) }
+                else { Color.clear.frame(width: 32, height: 32) }
+            }
+        }
+        .padding(.vertical, 9).padding(.horizontal, 12)
+        .background(RoundedRectangle(cornerRadius: 7).fill(selected || opening ? Color.blue.opacity(0.10) : (hovering ? Color.primary.opacity(0.04) : .clear)).padding(.horizontal, 4))
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+        .onTapGesture(count: 2) { if entry.isDirectory && !disabled { open() } }
+        .onTapGesture { if entry.eligible && !disabled { toggle() } }
+        .help(entry.url.path)
+    }
+    private var badges: [(String, Color)] {
+        var tags: [(String, Color)] = []
+        if entry.needsExtraConfirmation { tags.append((t("Extra confirmation", "Cần xác nhận thêm"), .orange)) }
+        if entry.issueCount > 0 { tags.append((t("Partial scan", "Quét một phần"), .orange)) }
+        if entry.isLink { tags.append((t("Symlink — not followed", "Symlink — không đi theo"), .secondary)) }
+        return tags
+    }
+}
+
+/// Row action with a 32×32 hit area and a hover highlight, so it is easy to click.
+private struct RowIconButton: View {
+    let systemImage: String
+    let help: String
+    var prominent = false
+    let action: () -> Void
+    @State private var hovering = false
+    @Environment(\.isEnabled) private var isEnabled
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage).font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(prominent ? Color.blue : Color.secondary)
+                .frame(width: 32, height: 32)
+                .background(RoundedRectangle(cornerRadius: 8).fill(hovering && isEnabled ? Color.primary.opacity(0.10) : (prominent ? Color.blue.opacity(0.10) : .clear)))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).help(help).accessibilityLabel(help)
+        .onHover { hovering = $0 }
     }
 }

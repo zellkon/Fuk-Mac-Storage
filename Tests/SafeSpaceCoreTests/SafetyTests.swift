@@ -40,6 +40,23 @@ final class SafetyTests: XCTestCase {
             XCTAssertNoThrow(try CleanupPolicy(home: home).validate(forged(url)))
         }
     }
+    func testHomeScanSkipsPrivacyProtectedFoldersUnlessAsked() throws {
+        try write("Documents/report.pdf")
+        try write("Desktop/shot.png")
+        try write("Projects/big.bin")
+        let skipped = try DiskScanner.scan(group: group("home"), home: home, skipping: DiskGroup.privacyProtectedFolders)
+        XCTAssertEqual(skipped.entries.map(\.url.lastPathComponent), ["Projects"])
+        let all = try DiskScanner.scan(group: group("home"), home: home)
+        XCTAssertEqual(Set(all.entries.map(\.url.lastPathComponent)), ["Documents", "Desktop", "Projects"])
+    }
+    func testWholeDiskOverviewIsReadOnly() throws {
+        try write("Anywhere/file")
+        XCTAssertFalse(DiskGroup.all.contains { $0.id == DiskGroup.wholeDisk.id })
+        let result = try DiskScanner.scanDirectory(home, group: .wholeDisk)
+        XCTAssertFalse(result.entries.isEmpty)
+        XCTAssertTrue(result.entries.allSatisfy { !$0.eligible })
+        XCTAssertThrowsError(try CleanupPolicy(home: home).validate(result.entries[0]))
+    }
     func testRootAndNestedPathsRejected() throws {
         let nested = try write("Library/Caches/app/child")
         XCTAssertThrowsError(try CleanupPolicy(home: home).validate(forged(home.appendingPathComponent("Library/Caches"))))

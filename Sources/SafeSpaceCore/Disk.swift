@@ -9,6 +9,18 @@ public struct DiskGroup: Identifiable, Sendable {
     public let canClean: Bool
     public let needsExtraConfirmation: Bool
     public let note: String
+    /// Absolute folder to scan instead of `relativePath` under home.
+    public var absolutePath: String? = nil
+    /// Read-only overview of everything on the data volume. Not part of `all`, so it is
+    /// never a cleanup root; its entries are not eligible for cleaning.
+    public static let wholeDisk = DiskGroup(id: "disk", title: "Entire disk", relativePath: "", icon: "internaldrive", canClean: false, needsExtraConfirmation: true, note: "Everything on your startup disk. Read-only: open folders to find what is large.", absolutePath: "/")
+    /// Top-level entries of `/` that are mount points or virtual file systems, not data.
+    public static let wholeDiskSkipped: Set<String> = ["Volumes", "dev", "home", "net", "cores"]
+    /// Home folders macOS guards with a separate permission prompt each.
+    public static let privacyProtectedFolders: Set<String> = ["Desktop", "Documents", "Downloads"]
+    public func root(home: URL) -> URL {
+        (absolutePath.map { URL(fileURLWithPath: $0, isDirectory: true) } ?? home.appendingPathComponent(relativePath)).standardizedFileURL
+    }
     public static let all: [DiskGroup] = [
         .init(id: "cache", title: "App caches", relativePath: "Library/Caches", icon: "externaldrive", canClean: true, needsExtraConfirmation: false, note: "Temporary app data. Close related apps first."),
         .init(id: "gradle", title: "Build caches", relativePath: ".gradle/caches", icon: "hammer", canClean: true, needsExtraConfirmation: false, note: "Dependencies may download again on the next build."),
@@ -80,11 +92,12 @@ public enum DiskScanner {
         }
         return bytes
     }
-    public static func scan(group: DiskGroup, home: URL) throws -> GroupResult {
-        let root = home.appendingPathComponent(group.relativePath).standardizedFileURL
-        return try scanDirectory(root, group: group, isHomeRoot: group.id == "home")
+    /// `skipping` lists top-level child names that are not read at all (not even measured),
+    /// so macOS does not ask for access to them.
+    public static func scan(group: DiskGroup, home: URL, skipping: Set<String> = []) throws -> GroupResult {
+        try scanDirectory(group.root(home: home), group: group, isHomeRoot: group.id == "home", skipping: group.id == DiskGroup.wholeDisk.id ? skipping.union(DiskGroup.wholeDiskSkipped) : skipping)
     }
-    public static func scanDirectory(_ root: URL, group: DiskGroup, isHomeRoot: Bool = false) throws -> GroupResult {
+    public static func scanDirectory(_ root: URL, group: DiskGroup, isHomeRoot: Bool = false, skipping: Set<String> = []) throws -> GroupResult {
         try Task.checkCancellation()
         let root = root.standardizedFileURL
         guard root.resolvingSymlinksInPath().path == root.path else {
@@ -96,13 +109,16 @@ public enum DiskScanner {
             let children = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
             var entries: [DiskEntry] = []
             var issues: [String] = []
-            for child in children {
+            for child in children where !skipping.contains(child.lastPathComponent) {
                 try Task.checkCancellation()
                 do {
                     let s = try metadata(child)
                     var seen = Set<FileIdentity>()
                     var errors = 0
-                    let bytes = try measure(child, device: rootStat.st_dev, seen: &seen, errors: &errors)
+                    // `/Users`, `/Applications`… are firmlinks onto the data volume, so the whole-disk
+                    // overview measures each child on its own volume (still never crossing mounts below it).
+                    let device = group.id == DiskGroup.wholeDisk.id ? s.st_dev : rootStat.st_dev
+                    let bytes = try measure(child, device: device, seen: &seen, errors: &errors)
                     let link = isLink(s)
                     let hiddenHomeItem = isHomeRoot && child.lastPathComponent.hasPrefix(".")
                     let libraryHomeItem = isHomeRoot && child.lastPathComponent == "Library"
